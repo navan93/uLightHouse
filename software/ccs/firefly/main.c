@@ -73,30 +73,23 @@ int main(void)
 {
   BCSCTL1 |= DIVA_1;                        // ACLK/2
   BCSCTL3 |= LFXT1S_2;                      // ACLK = VLO
-  WDTCTL = WDT_ADLY_250;                   // Interval timer
-  IE1 |= WDTIE;                             // Enable WDT interrupt
+  WDTCTL   = WDT_ADLY_250;                  // Interval timer
+  IE1     |= WDTIE;                         // Enable WDT interrupt
+
   P1DIR = 0xFF;                             // All P1.x outputs
   P1OUT = 0;                                // All P1.x reset
   P2DIR = 0xFF;                             // All P2.x outputs
   P2OUT = 0;                                // All P2.x reset
 
   P2SEL &= ~BIT6;
-  P1SEL |= 0x02;                            // P1.1 option select
-
-  CCTL0 = CCIE;                             // CCR0 interrupt enabled
-  CCTL0 = OUTMOD_3;                         // CCR0 set,reset
 
   while(1)
   {
-      TACTL = TASSEL_2 + MC_1;                  // SMCLK, upmode
-      CCR1 = 10;
-      CCR0 = 20-1;
-      __bis_SR_register(LPM0_bits + GIE);       // Enter LPM0 w/ interrupt
-//      int i;
-//      P2OUT |= BIT6;                          // Set P2.6 LED on
-//      for (i = 10; i>0; i--);                 // Delay
-//      P2OUT &= ~BIT6;                         // Reset P2.6 LED off
-      __bis_SR_register(LPM3_bits + GIE);       // Enter LPM3
+    int i;
+    P2OUT |= BIT6;                          // Set P2.6 LED on
+    for (i = 10; i>0; i--);                 // Delay
+    P2OUT &= ~BIT6;                         // Reset P2.6 LED off
+    __bis_SR_register(LPM3_bits + GIE);     // Enter LPM3
   }
 }
 
