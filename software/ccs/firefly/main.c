@@ -69,10 +69,12 @@
 
 #include <msp430.h>
 
-#define T_ON 10
-#define CTR_OFFSET 20
-#define NUM_PULSES 10
-#define T_ON_DELTA (1)
+#define T_ON            10
+#define CTR_OFFSET      50
+#define NUM_PULSES      10
+#define T_ON_DELTA      (1)
+#define DARKNESS_TH     700
+
 
 void main_ta_10(void)
 {
@@ -191,16 +193,44 @@ void pulsar2(int pulse_width, int num_pulses)
     }while(--num_pulses);
 }
 
+//Turn ON pwm for a specified amount of time measured by WDT
+void pulsar3(void)
+{
+    CCR0 = CTR_OFFSET + (T_ON-1);              // CCR0 will drive P1.1 low
+    CCR1 = CTR_OFFSET;                                 // CCR1 will drive P1.1 high
+    CCTL1 = OUTMOD_3;                         // CCR0 set/reset mode
+    TACTL = TASSEL_2 + MC_1 + TACLR;            // SMCLK, upmode
+    __bis_SR_register(LPM0_bits + GIE);         // CPU off
+}
+
 void firefly(void)
 {
     volatile unsigned int adc_val;
     adc_init();
     adc_val = adc_read();
     adc_deinit();
-    if(adc_val < 700) {
+    if(adc_val < DARKNESS_TH) {
         pwm_init();
         pulsar(T_ON, NUM_PULSES);
     }
+    __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
+}
+
+void beacon(void)
+{
+//    WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
+    BCSCTL1 ^= DIVA_1|DIVA_2;                        // ACLK/2
+//    WDTCTL = WDTPW+WDTCNTCL;
+    pulsar3();
+    BCSCTL1 ^= DIVA_1|DIVA_2;                        // ACLK/4
+//    WDTCTL |= WDTCNTCL;
+    __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
+}
+
+void led_debug(void)
+{
+    pwm_init();
+    pulsar(T_ON, NUM_PULSES);
     __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
 }
 
@@ -220,8 +250,9 @@ int my_main(void)
 
   BCSCTL1 |= DIVA_2;                        // ACLK
   BCSCTL3 |= LFXT1S_2;                      // ACLK = VLO
-  WDTCTL   = WDT_ADLY_16;                   // Interval timer _16: 100ms, _250:
+  WDTCTL   = WDT_ADLY_250;                   // Interval timer _16: 100ms, _250:
   IE1     |= WDTIE;                         // Enable WDT interrupt
+//  WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
 
   P1DIR = 0xFF;                             // All P1.x outputs
   P1OUT = 0;                                // All P1.x reset
@@ -233,8 +264,10 @@ int my_main(void)
 
   while(1)
   {
-      firefly();
+//      firefly();
+//      led_debug();
 //      adc_debug();
+      beacon();
   }
 }
 
@@ -249,6 +282,7 @@ int main(void)
 __interrupt void watchdog_timer (void)
 {
   __bic_SR_register_on_exit(LPM3_bits);         // Clear LPM3 bits from 0(SR)
+  __bic_SR_register_on_exit(LPM0_bits);       // Clear LPM0 bits from 0(SR)
 }
 
 // Timer A0 interrupt service routine

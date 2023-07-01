@@ -37,3 +37,4 @@ targetConfigs
 .DS_Store
 .settings
 .launches
+*.csv
