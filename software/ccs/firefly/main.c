@@ -70,11 +70,13 @@
 #include <msp430.h>
 
 #define T_ON            10
-#define CTR_OFFSET      50
-#define NUM_PULSES      10
+#define CTR_OFFSET      1
+#define NUM_PULSES      5
 #define T_ON_DELTA      (1)
 #define DARKNESS_TH     700
+#define T_ON_TIME       190
 
+static int ton_timer = T_ON_TIME;
 
 void main_ta_10(void)
 {
@@ -219,11 +221,18 @@ void firefly(void)
 void beacon(void)
 {
 //    WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
-    BCSCTL1 ^= DIVA_1|DIVA_2;                        // ACLK/2
-//    WDTCTL = WDTPW+WDTCNTCL;
-    pulsar3();
-    BCSCTL1 ^= DIVA_1|DIVA_2;                        // ACLK/4
-//    WDTCTL |= WDTCNTCL;
+    BCSCTL1 ^= DIVA_2;                        // ACLK/2
+    WDTCTL   = WDT_ADLY_1_9;
+    ton_timer = T_ON_TIME;
+    pwm_init();
+    while(ton_timer > 0)
+    {
+
+        pulsar(T_ON, NUM_PULSES);
+        __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
+    }
+    BCSCTL1 ^= DIVA_2;                        // ACLK/4
+    WDTCTL   = WDT_ADLY_250;
     __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
 }
 
@@ -282,7 +291,8 @@ int main(void)
 __interrupt void watchdog_timer (void)
 {
   __bic_SR_register_on_exit(LPM3_bits);         // Clear LPM3 bits from 0(SR)
-  __bic_SR_register_on_exit(LPM0_bits);       // Clear LPM0 bits from 0(SR)
+//  __bic_SR_register_on_exit(LPM0_bits);       // Clear LPM0 bits from 0(SR)
+  if(ton_timer--);
 }
 
 // Timer A0 interrupt service routine
