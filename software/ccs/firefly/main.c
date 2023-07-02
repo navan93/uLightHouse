@@ -68,12 +68,13 @@
 
 
 #include <msp430.h>
+#include <stdint.h>
 
-#define T_ON            10
+#define T_ON            12
 #define CTR_OFFSET      1
-#define NUM_PULSES      5
+#define NUM_PULSES      20
 #define T_ON_DELTA      (1)
-#define DARKNESS_TH     700
+#define DARKNESS_TH     400
 #define T_ON_TIME       190
 
 static int ton_timer = T_ON_TIME;
@@ -205,6 +206,15 @@ void pulsar3(void)
     __bis_SR_register(LPM0_bits + GIE);         // CPU off
 }
 
+uint8_t is_dark(void)
+{
+    volatile unsigned int adc_val;
+    adc_init();
+    adc_val = adc_read();
+    adc_deinit();
+    return (adc_val < DARKNESS_TH) ;
+}
+
 void firefly(void)
 {
     volatile unsigned int adc_val;
@@ -221,17 +231,20 @@ void firefly(void)
 void beacon(void)
 {
 //    WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
-    BCSCTL1 ^= DIVA_2;                        // ACLK/2
-    WDTCTL   = WDT_ADLY_1_9;
-    ton_timer = T_ON_TIME;
-    pwm_init();
-    while(ton_timer > 0)
-    {
+    if(is_dark()) {
+        BCSCTL1 ^= DIVA_2;                        // Switch to DIVA_0
+        WDTCTL   = WDT_ADLY_1_9;
 
-        pulsar(T_ON, NUM_PULSES);
-        __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
+        ton_timer = T_ON_TIME;
+        pwm_init();
+        while(ton_timer > 0)
+        {
+
+            pulsar(T_ON, NUM_PULSES);
+            __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
+        }
+        BCSCTL1 ^= DIVA_2;                        // Switch to DIVA_2
     }
-    BCSCTL1 ^= DIVA_2;                        // ACLK/4
     WDTCTL   = WDT_ADLY_250;
     __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
 }
@@ -269,7 +282,7 @@ int my_main(void)
   P2OUT = 0;                                // All P2.x reset
 
   P1SEL |= 0x0C;                            // P1.1 option select
-  P1OUT |= BIT7;
+//  P1OUT |= BIT7;
 
   while(1)
   {
