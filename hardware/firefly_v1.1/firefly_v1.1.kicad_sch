@@ -1162,7 +1162,7 @@
     (property "Value" "1mH" (at 187.96 80.0099 90)
       (effects (font (size 1.27 1.27)) (justify left))
     )
-    (property "Footprint" "LIB_HM79M-20102LFTR:HM79M20102LFTR" (at 185.42 78.74 0)
+    (property "Footprint" "Inductor_SMD:L_HM79M20102LFTR" (at 185.42 78.74 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (property "Datasheet" "~" (at 185.42 78.74 0)
