@@ -58,7 +58,9 @@
 //      | |               |
 //      --|RST        XOUT|-
 //        |               |
-//        |           P1.0|-->LED
+//        |           P1.2|--> MOSFET
+//        |           P1.6|--> LED_ANODE
+//        |           P1.7|--> LED_CATHODE
 //
 //  D. Dang
 //  Texas Instruments Inc.
@@ -70,98 +72,48 @@
 #include <msp430.h>
 #include <stdint.h>
 
-#define T_ON            12
-#define CTR_OFFSET      1
-#define NUM_PULSES      20
-#define T_ON_DELTA      (1)
-#define DARKNESS_TH     400
-#define T_ON_TIME       190
+#define T_ON                    10
+#define CTR_OFFSET              1
+#define NUM_PULSES              5
+#define DARKNESS_TH             600
+#define T_ON_TIME               190
+#define ADC_VAL_HYST            20
+#define ADC_VAL_TH_CAL_CYCLES   24685
 
 static int ton_timer = T_ON_TIME;
+static unsigned int m_adc_val_min;
+static unsigned int m_adc_val_th;
+static unsigned int m_adc_cal_cycle;
 
-void main_ta_10(void)
-{
-    WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
-    P1DIR |= 0x02;                            // P1.1 output
-    P1SEL |= 0x02;                            // P1.1 option select
-    CCTL0 = OUTMOD_3;                         // CCR0 toggle mode
-    CCR0 = 50-1;
-    CCR1 = 10;
-    TACTL = TASSEL_2 + MC_1;                  // SMCLK, upmode
-
-    __bis_SR_register(CPUOFF);                // CPU off
-}
-
-void main_ta_19(void)
-{
-  WDTCTL = WDTPW + WDTHOLD;                 // Stop WDT
-  P1DIR |= BIT2;                            // P1.2 and P1.3 output
-  P1OUT = 0;                                // All P1.x reset
-  P1SEL |= BIT2;                            // P1.2 and P1.3 TA1/2 options
-  CCR0 = CTR_OFFSET + (T_ON-1);                               // PWM Period/2
-  CCTL1 = OUTMOD_3;                         // CCR1 set/reset
-  CCR1 = CTR_OFFSET;                                // CCR1 PWM duty cycle
-
-  CCTL0 = CCIE;                             // CCR0 interrupt enabled
-
-  TACTL = TASSEL_2 + MC_2 + TACLR;                  // SMCLK, cont mode
-
-  __bis_SR_register(LPM0_bits + GIE);             // Enter LPM0
-}
-
-int main_adc10_02(void)
-{
-  ADC10CTL0 = SREF_1 + ADC10SHT_2 + REFON + ADC10ON + ADC10IE;
-  __enable_interrupt();                     // Enable interrupts.
-  CCR0 = 30;                              // Delay to allow Ref to settle
-  CCTL0 |= CCIE;                          // Compare-mode interrupt.
-  TACTL = TASSEL_2 | MC_1;                  // TACLK = SMCLK, Up mode.
-  LPM0;                                     // Wait for delay.
-  CCTL0 &= ~CCIE;                         // Disable timer Interrupt
-  __disable_interrupt();
-  ADC10CTL1 = INCH_6;                       // input A6
-  ADC10AE0 |= BIT6;                         // PA.1 ADC option select
-  P1DIR |= 0x01;                            // Set P1.0 to output direction
-
-  for (;;)
-  {
-    ADC10CTL0 |= ENC + ADC10SC;             // Sampling and conversion start
-    __bis_SR_register(CPUOFF + GIE);        // LPM0, ADC10_ISR will force exi
-    if (ADC10MEM < 0x88)                    // ADC10MEM = A1 > 0.2V?
-      P1OUT &= ~0x01;                       // Clear P1.0 LED off
-    else
-      P1OUT |= 0x01;                        // Set P1.0 LED on
-  }
-}
 
 void adc_init(void)
 {
-      ADC10CTL0 = SREF_1 + ADC10SHT_0 + REFON + ADC10ON + ADC10IE;
-      ADC10CTL1 = INCH_6;                       // input A6
-      __enable_interrupt();                     // Enable interrupts.
-      CCR0 = 30;                              // Delay to allow Ref to settle
-      CCTL0 |= CCIE;                          // Compare-mode interrupt.
-      CCTL1 = 0;
-      TACTL = TASSEL_2 | MC_1;                  // TACLK = SMCLK, Up mode.
-      LPM0;                                     // Wait for delay.
-      CCTL0 &= ~CCIE;                         // Disable timer Interrupt
-      TACTL = MC_0 + TACLR;                       // Halt timer
-      __disable_interrupt();
-      ADC10AE0 |= BIT6;                         // PA.1 ADC option select
+    ADC10CTL0 = SREF_1 + ADC10SHT_0 + REFON + ADC10ON + ADC10IE;
+    ADC10CTL1 = INCH_6;                     // input A6
+    __enable_interrupt();                   // Enable interrupts.
+    CCR0 = 30;                              // Delay to allow Ref to settle
+    CCTL0 |= CCIE;                          // Compare-mode interrupt.
+    CCTL1 = 0;
+    TACTL = TASSEL_2 | MC_1;                // TACLK = SMCLK, Up mode.
+    LPM0;                                   // Wait for delay.
+    CCTL0 &= ~CCIE;                         // Disable timer Interrupt
+    TACTL = MC_0 + TACLR;                   // Halt timer
+    __disable_interrupt();
+    ADC10AE0 |= BIT6;                       // PA.1 ADC option select
 }
 
 void adc_deinit(void)
 {
-//    ADC10AE0 = 0;
-//    ADC10CTL1 = 0;
     ADC10CTL0 &= ~ENC;                        // ADC10 disabled
     ADC10CTL0 = 0;                            // ADC10, Vref disabled completely
 }
 
 int adc_read(void)
 {
+    adc_init();
     ADC10CTL0 |= ENC + ADC10SC;             // Sampling and conversion start
-    __bis_SR_register(LPM0_bits + GIE);        // LPM0, ADC10_ISR will force exit
+    __bis_SR_register(LPM0_bits + GIE);     // LPM0, ADC10_ISR will force exit
+    adc_deinit();
     return ADC10MEM;
 }
 
@@ -181,56 +133,27 @@ void pulsar(int pulse_width, int num_pulses)
     }while(--num_pulses);
 }
 
-void pulsar2(int pulse_width, int num_pulses)
-{
-    unsigned int glow = 0;
-    CCR1 = CTR_OFFSET;                                 // CCR1 will drive P1.1 high
-    do {
-        if(glow < pulse_width)
-            glow += T_ON_DELTA;
-        else
-            glow = pulse_width;
-        CCR0 = CTR_OFFSET + (glow-1);;              // CCR0 will drive P1.1 low
-        TACTL = TASSEL_2 + MC_2 + TACLR;            // SMCLK, upmode
-        __bis_SR_register(LPM0_bits + GIE);         // CPU off
-    }while(--num_pulses);
-}
-
-//Turn ON pwm for a specified amount of time measured by WDT
-void pulsar3(void)
-{
-    CCR0 = CTR_OFFSET + (T_ON-1);              // CCR0 will drive P1.1 low
-    CCR1 = CTR_OFFSET;                                 // CCR1 will drive P1.1 high
-    CCTL1 = OUTMOD_3;                         // CCR0 set/reset mode
-    TACTL = TASSEL_2 + MC_1 + TACLR;            // SMCLK, upmode
-    __bis_SR_register(LPM0_bits + GIE);         // CPU off
-}
-
 uint8_t is_dark(void)
 {
     volatile unsigned int adc_val;
-    adc_init();
-    adc_val = adc_read();
-    adc_deinit();
-    return (adc_val < DARKNESS_TH) ;
-}
+    m_adc_cal_cycle++;
 
-void firefly(void)
-{
-    volatile unsigned int adc_val;
-    adc_init();
     adc_val = adc_read();
-    adc_deinit();
-    if(adc_val < DARKNESS_TH) {
-        pwm_init();
-        pulsar(T_ON, NUM_PULSES);
+
+    if(adc_val < m_adc_val_min)
+        m_adc_val_min = adc_val;
+
+    if(m_adc_cal_cycle == ADC_VAL_TH_CAL_CYCLES) {
+        m_adc_val_th = m_adc_val_min + ADC_VAL_HYST;
+        m_adc_val_min = 0xFFFF;
+        m_adc_cal_cycle = 0;
     }
-    __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
+
+    return (adc_val < m_adc_val_th) ;
 }
 
 void beacon(void)
 {
-//    WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
     if(is_dark()) {
         BCSCTL1 ^= DIVA_2;                        // Switch to DIVA_0
         WDTCTL   = WDT_ADLY_1_9;
@@ -267,45 +190,38 @@ void adc_debug(void)
     __bis_SR_register(LPM3_bits + GIE);         // Enter LPM3
 }
 
-int my_main(void)
-{
-
-  BCSCTL1 |= DIVA_2;                        // ACLK
-  BCSCTL3 |= LFXT1S_2;                      // ACLK = VLO
-  WDTCTL   = WDT_ADLY_250;                   // Interval timer _16: 100ms, _250:
-  IE1     |= WDTIE;                         // Enable WDT interrupt
-//  WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
-
-  P1DIR = 0xFF;                             // All P1.x outputs
-  P1OUT = 0;                                // All P1.x reset
-  P2DIR = 0xFF;                             // All P2.x outputs
-  P2OUT = 0;                                // All P2.x reset
-
-  P1SEL |= 0x0C;                            // P1.1 option select
-//  P1OUT |= BIT7;
-
-  while(1)
-  {
-//      firefly();
-//      led_debug();
-//      adc_debug();
-      beacon();
-  }
-}
-
 int main(void)
 {
-//    main_ta_19();
-    my_main();
+
+    BCSCTL1 |= DIVA_2;                        // ACLK
+    BCSCTL3 |= LFXT1S_2;                      // ACLK = VLO
+    WDTCTL   = WDT_ADLY_250;                   // Interval timer _16: 100ms, _250:
+    IE1     |= WDTIE;                         // Enable WDT interrupt
+
+    P1DIR = 0xFF;                             // All P1.x outputs
+    P1OUT = 0;                                // All P1.x reset
+    P2DIR = 0xFF;                             // All P2.x outputs
+    P2OUT = 0;                                // All P2.x reset
+
+    P1SEL |= 0x0C;                            // P1.1 option select
+
+    m_adc_val_min = 0xFFFF;
+    m_adc_val_th = 400;
+    m_adc_cal_cycle = 0;
+
+    while(1)
+    {
+        beacon();
+    }
 }
 
 // Watchdog Timer interrupt service routine
 #pragma vector=WDT_VECTOR
 __interrupt void watchdog_timer (void)
 {
-  __bic_SR_register_on_exit(LPM3_bits);         // Clear LPM3 bits from 0(SR)
-//  __bic_SR_register_on_exit(LPM0_bits);       // Clear LPM0 bits from 0(SR)
-  if(ton_timer--);
+    __bic_SR_register_on_exit(LPM3_bits);         // Clear LPM3 bits from 0(SR)
+    if(ton_timer)
+        ton_timer--;
 }
 
 // Timer A0 interrupt service routine
@@ -320,5 +236,5 @@ __interrupt void Timer_A (void)
 #pragma vector=ADC10_VECTOR
 __interrupt void ADC10_ISR (void)
 {
-  __bic_SR_register_on_exit(CPUOFF);        // Clear CPUOFF bit from 0(SR)
+    __bic_SR_register_on_exit(CPUOFF);        // Clear CPUOFF bit from 0(SR)
 }
